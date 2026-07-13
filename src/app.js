@@ -28,7 +28,11 @@ const backupRoutes = require('./routes/backup.routes');
 
 const app = express();
 
-app.use(cors({ origin: env.corsOrigin, credentials: true }));
+// `origin: true` reflects the request's actual Origin header back, which is
+// the only way to allow every origin while credentials: true stays set - a
+// literal '*' is rejected by browsers on credentialed requests.
+const allowAllOrigins = env.corsOrigin.includes('*');
+app.use(cors({ origin: allowAllOrigins ? true : env.corsOrigin, credentials: true }));
 app.use(express.json());
 
 app.get('/api/health', (req, res) => {
