@@ -1,0 +1,483 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  QA_LEAD
+  TESTER
+  VIEWER
+}
+
+model Workspace {
+  id          String   @id @default(uuid())
+  name        String
+  ownerId     String
+  inviteToken String?  @unique
+  createdAt   DateTime @default(now())
+
+  memberships   Membership[]
+  teamMembers   TeamMember[]
+  projects      Project[]
+  activities    Activity[]
+  notifications Notification[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  displayName  String
+  createdAt    DateTime @default(now())
+
+  memberships Membership[]
+}
+
+// A membership row = one user active in one workspace. Kept as its own
+// table (rather than a single workspaceId on User) so a future invite
+// flow can support a user belonging to more than one workspace without
+// a schema change.
+model Membership {
+  id          String   @id @default(uuid())
+  userId      String
+  workspaceId String
+  role        Role     @default(VIEWER)
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+  @@index([workspaceId])
+}
+
+model TeamMember {
+  id          String    @id @default(uuid())
+  workspaceId String
+  name        String
+  email       String?
+  userId      String?
+  role        Role      @default(VIEWER)
+  status      String    @default("active")
+  deleted     Boolean   @default(false)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model Project {
+  id                String    @id @default(uuid())
+  workspaceId       String
+  name              String
+  description       String    @default("")
+  memberIds         String[]  @default([])
+  publicShareToken  String?   @unique
+  deleted           Boolean   @default(false)
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  updatedBy     String?
+  createdBy     String?
+  createdByName String?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  testCases TestCase[]
+  bugs      Bug[]
+  testRuns  TestRun[]
+  runDraft  RunDraft?
+  requirements Requirement[]
+  testPlans    TestPlan[]
+  milestones   Milestone[]
+  sharedSteps  SharedStep[]
+  presence     Presence[]
+  attachments  Attachment[]
+  comments     Comment[]
+
+  @@index([workspaceId])
+}
+
+// entityType/entityId point at whatever the comment is attached to
+// (e.g. "bug" + bugId, "testCase" + testCaseId) - kept generic instead of
+// nullable FK columns per entity type since more entity types may gain
+// comments later.
+model Comment {
+  id         String   @id @default(uuid())
+  projectId  String
+  entityType String
+  entityId   String
+  text       String
+  authorId   String?
+  authorName String
+  createdAt  DateTime @default(now())
+  deleted    Boolean  @default(false)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, entityType, entityId])
+}
+
+// Linked to exactly one of testCaseId / bugId (both nullable, enforced
+// in the service layer since Prisma has no declarative CHECK constraint).
+model Attachment {
+  id         String   @id @default(uuid())
+  projectId  String
+  testCaseId String?
+  bugId      String?
+  filename   String
+  mimetype   String
+  size       Int
+  path       String
+  uploadedAt DateTime @default(now())
+  uploadedBy String?
+
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  testCase   TestCase? @relation(fields: [testCaseId], references: [id], onDelete: Cascade)
+  bug        Bug?      @relation(fields: [bugId], references: [id], onDelete: Cascade)
+
+  @@index([testCaseId])
+  @@index([bugId])
+}
+
+// Polled presence, replaces the Firestore realtime listener. Upserted on
+// heartbeat; the service layer filters to rows seen within the last 30s.
+model Presence {
+  id          String   @id @default(uuid())
+  projectId   String
+  userId      String
+  userName    String
+  currentPage String   @default("")
+  lastSeenAt  DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+  @@index([projectId])
+}
+
+model Notification {
+  id          String    @id @default(uuid())
+  workspaceId String
+  type        String
+  recipient   String
+  sender      String?
+  entityId    String?
+  entityName  String?
+  message     String
+  projectId   String?
+  read        Boolean   @default(false)
+  deleted     Boolean   @default(false)
+  deletedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, recipient])
+}
+
+model SharedStep {
+  id          String   @id @default(uuid())
+  projectId   String
+  name        String
+  description String   @default("")
+  steps       String[] @default([])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+enum TestCaseStatus {
+  NOT_EXECUTED
+  PASS
+  FAIL
+  BLOCKER
+  SKIPPED
+  REPORTED
+  NEED_CLARIFICATION
+  TESTING_IN_PROGRESS
+  HOLD
+}
+
+enum Priority {
+  HIGH
+  MED
+  LOW
+}
+
+model TestCase {
+  id            String         @id @default(uuid())
+  projectId     String
+  sourceTcId    String?
+  title         String
+  module        String         @default("")
+  folder        String         @default("")
+  scenario      String         @default("")
+  preconditions String         @default("")
+  steps         String[]       @default([])
+  testData      String         @default("")
+  expected      String         @default("")
+  actual        String         @default("")
+  status        TestCaseStatus @default(NOT_EXECUTED)
+  priority      Priority       @default(MED)
+  assignee      String         @default("")
+  devRemarks    String         @default("")
+  qaRemarks     String         @default("")
+  evidenceLinks Json           @default("[]")
+  tags          String[]       @default([])
+  history       Json           @default("[]")
+  deleted       Boolean        @default(false)
+  deletedAt     DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  createdBy     String?
+  createdByName String?
+  updatedBy     String?
+  updatedByName String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  bugsLinked Bug[] @relation("BugLinkedTestCase")
+  attachments Attachment[]
+
+  @@unique([projectId, sourceTcId])
+  @@index([projectId])
+  @@index([projectId, module])
+}
+
+enum BugSeverity {
+  CRITICAL
+  MAJOR
+  MINOR
+}
+
+enum BugPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum BugStatus {
+  OPEN
+  IN_REVIEW
+  CLOSED
+}
+
+enum RetestStatus {
+  NOT_RETESTED
+  PASSED
+  FAILED
+}
+
+model Bug {
+  id               String       @id @default(uuid())
+  projectId        String
+  sourceBugId      String?
+  title            String
+  description      String       @default("")
+  module           String       @default("")
+  severity         BugSeverity  @default(MINOR)
+  priority         BugPriority  @default(MEDIUM)
+  status           BugStatus    @default(OPEN)
+  stepsToReproduce String       @default("")
+  expected         String       @default("")
+  actual           String       @default("")
+  environment      String       @default("")
+  build            String       @default("")
+  fixedInBuild     String       @default("")
+  assignedTo       String       @default("")
+  reportedBy       String?
+  reportedByName   String?
+  reportedDate     String?
+  retestStatus     RetestStatus @default(NOT_RETESTED)
+  devRemarks       String       @default("")
+  qaRemarks        String       @default("")
+  linkedTestCaseId String?
+  linkedRequirementId String?
+  evidenceLinks    Json         @default("[]")
+  linkedBugIds     String[]     @default([])
+  tags             String[]     @default([])
+  history          Json         @default("[]")
+  deleted          Boolean      @default(false)
+  deletedAt        DateTime?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  createdBy        String?
+  createdByName    String?
+  updatedBy        String?
+  updatedByName    String?
+
+  project        Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  linkedTestCase TestCase? @relation("BugLinkedTestCase", fields: [linkedTestCaseId], references: [id], onDelete: SetNull)
+  attachments    Attachment[]
+
+  @@unique([projectId, sourceBugId])
+  @@index([projectId])
+}
+
+model TestRun {
+  id                String    @id @default(uuid())
+  projectId         String
+  name              String
+  build             String    @default("")
+  environment       String    @default("")
+  date              DateTime  @default(now())
+  completedAt       DateTime?
+  executedById      String?
+  executedByName    String?
+  total             Int       @default(0)
+  passed            Int       @default(0)
+  failed            Int       @default(0)
+  blocker           Int       @default(0)
+  skipped           Int       @default(0)
+  pending           Int       @default(0)
+  reported          Int       @default(0)
+  inProgress        Int       @default(0)
+  hold              Int       @default(0)
+  needClarification Int       @default(0)
+  cases             Json      @default("[]")
+  notes             String    @default("")
+  linkedBugIds      String[]  @default([])
+  bugsLogged        Int       @default(0)
+  testPlanId        String?
+  deleted           Boolean   @default(false)
+  deletedAt         DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  project  Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  testPlan TestPlan? @relation(fields: [testPlanId], references: [id], onDelete: SetNull)
+
+  @@index([testPlanId])
+
+  @@index([projectId])
+}
+
+// One active draft per project - enforced by the unique constraint on
+// projectId plus an upsert in the service layer.
+model RunDraft {
+  id               String   @id @default(uuid())
+  projectId        String   @unique
+  runName          String   @default("")
+  build            String   @default("")
+  testPlanId       String?
+  linkedRequirementId String?
+  selectedIds      String[] @default([])
+  currentIndex     Int      @default(0)
+  results          Json     @default("{}")
+  startedAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  bugsLogged       Int      @default(0)
+  loggedBugIds     String[] @default([])
+  loggedBugCaseIds String[] @default([])
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model Requirement {
+  id            String    @id @default(uuid())
+  projectId     String
+  key           String?
+  title         String
+  description   String    @default("")
+  priority      String    @default("Medium")
+  testCaseIds   String[]  @default([])
+  deleted       Boolean   @default(false)
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdBy     String?
+  createdByName String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model TestPlan {
+  id             String    @id @default(uuid())
+  projectId      String
+  name           String
+  description    String    @default("")
+  requirementIds String[]  @default([])
+  milestoneId    String?
+  status         String    @default("Open")
+  testCaseIds    String[]  @default([])
+  completedAt    DateTime?
+  deleted        Boolean   @default(false)
+  deletedAt      DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdBy      String?
+  createdByName  String?
+
+  project    Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestone  Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  testRuns   TestRun[]
+
+  @@index([projectId])
+  @@index([milestoneId])
+}
+
+model Milestone {
+  id            String    @id @default(uuid())
+  projectId     String
+  name          String
+  description   String    @default("")
+  dueDate       DateTime?
+  testPlanIds   String[]  @default([])
+  status        String    @default("Open")
+  completedAt   DateTime?
+  deleted       Boolean   @default(false)
+  deletedAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  createdBy     String?
+  createdByName String?
+
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  testPlans TestPlan[]
+
+  @@index([projectId])
+}
+
+enum ActivityAction {
+  created
+  updated
+  deleted
+  status_changed
+  priority_changed
+  severity_changed
+  assigned
+  run_started
+  run_completed
+  restored
+  exported
+}
+
+model Activity {
+  id          String         @id @default(uuid())
+  workspaceId String
+  projectId   String?
+  entityType  String
+  entityId    String?
+  action      ActivityAction
+  title       String
+  details     String         @default("")
+  actorId     String?
+  actorName   String?
+  createdAt   DateTime       @default(now())
+  metadata    Json           @default("{}")
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([projectId])
+  @@index([entityType, entityId])
+}
