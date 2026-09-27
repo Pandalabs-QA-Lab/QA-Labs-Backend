@@ -6,10 +6,21 @@ const prisma = require('../lib/prisma');
 // this is the entire mechanism that prevents cross-workspace data leaks.
 function attachWorkspace(req, res, next) {
   if (!req.user || !req.user.workspaceId) {
-    return res.status(401).json({ error: 'Missing workspace context' });
+    return res.status(403).json({ error: 'Select or join a workspace first' });
   }
   req.workspaceId = req.user.workspaceId;
   next();
+}
+
+async function requireWorkspaceMember(req, res, next) {
+  try {
+    const membership = await prisma.membership.findUnique({
+      where: { userId_workspaceId: { userId: req.user.id, workspaceId: req.workspaceId } },
+    });
+    if (!membership) return res.status(403).json({ error: 'Workspace access has been removed' });
+    req.membership = membership;
+    next();
+  } catch (err) { next(err); }
 }
 
 // Role is re-checked live against the Membership table on every request
@@ -18,7 +29,7 @@ function attachWorkspace(req, res, next) {
 function requireRole(...allowedRoles) {
   return async (req, res, next) => {
     try {
-      const membership = await prisma.membership.findUnique({
+      const membership = req.membership || await prisma.membership.findUnique({
         where: { userId_workspaceId: { userId: req.user.id, workspaceId: req.workspaceId } },
       });
       if (!membership || !allowedRoles.includes(membership.role)) {
@@ -32,4 +43,4 @@ function requireRole(...allowedRoles) {
   };
 }
 
-module.exports = { attachWorkspace, requireRole };
+module.exports = { attachWorkspace, requireWorkspaceMember, requireRole };

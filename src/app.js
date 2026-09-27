@@ -3,7 +3,8 @@ const cors = require('cors');
 const env = require('./config/env');
 const errorHandler = require('./middleware/errorHandler');
 const { requireAuth } = require('./middleware/auth');
-const { attachWorkspace } = require('./middleware/workspaceScope');
+const { attachWorkspace, requireWorkspaceMember } = require('./middleware/workspaceScope');
+const accessRoutes = require('./routes/access.routes');
 const loadActor = require('./middleware/loadActor');
 const authRoutes = require('./routes/auth.routes');
 const invitesRoutes = require('./routes/invites.routes');
@@ -47,12 +48,14 @@ app.use('/api/invites', invitesRoutes);
 // Fully public, no auth at all: this is the whole point of a shareable
 // report link - external stakeholders may never have an account.
 app.use('/api/public-reports', publicReportsRoutes);
+// Signup, workspace requests and platform oversight also work without a selected workspace.
+app.use('/api/access', accessRoutes);
 
 // Every route mounted below this line is protected: requireAuth verifies
 // the JWT, attachWorkspace derives req.workspaceId from it (never from
 // the request itself), and loadActor resolves the display name used for
 // createdBy/actorName stamps.
-app.use('/api', requireAuth, attachWorkspace, loadActor);
+app.use('/api', requireAuth, attachWorkspace, requireWorkspaceMember, loadActor);
 
 app.use('/api/projects', projectsRoutes);
 app.use('/api/projects/:projectId/test-cases', testCasesRoutes);

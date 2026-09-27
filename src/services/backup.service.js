@@ -47,13 +47,12 @@ function validateBackup(backup) {
 async function importWorkspace(workspaceId, actor, backup, mode) {
   validateBackup(backup);
 
-  if (mode === 'replace') {
-    await prisma.project.deleteMany({ where: { workspaceId } });
-  }
-
   const { projects = [], projectData = {}, teamMembers = [] } = backup.data;
 
   return prisma.$transaction(async (tx) => {
+    if (mode === 'replace') {
+      await tx.project.deleteMany({ where: { workspaceId } });
+    }
     for (const member of teamMembers) {
       const existing = await tx.teamMember.findFirst({ where: { workspaceId, name: member.name, deleted: false } });
       if (!existing) {

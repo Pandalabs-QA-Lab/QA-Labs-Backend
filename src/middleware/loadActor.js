@@ -9,7 +9,7 @@ async function loadActor(req, res, next) {
     if (!user) {
       return res.status(401).json({ error: 'Invalid session' });
     }
-    req.actor = { id: user.id, name: user.displayName };
+    req.actor = { id: user.id, name: user.displayName, email: user.email };
     next();
   } catch (err) {
     next(err);

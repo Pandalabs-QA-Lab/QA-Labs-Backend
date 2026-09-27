@@ -9,5 +9,7 @@ router.post('/register', asyncHandler(controller.register));
 router.post('/login', asyncHandler(controller.login));
 router.get('/me', requireAuth, asyncHandler(controller.me));
 router.patch('/me', requireAuth, asyncHandler(controller.updateMe));
+router.get('/workspaces', requireAuth, asyncHandler(controller.listWorkspaces));
+router.post('/workspaces/:workspaceId/select', requireAuth, asyncHandler(controller.switchWorkspace));
 
 module.exports = router;

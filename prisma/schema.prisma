@@ -31,9 +31,29 @@ model User {
   email        String   @unique
   passwordHash String
   displayName  String
+  isPlatformAdmin Boolean @default(false)
   createdAt    DateTime @default(now())
 
   memberships Membership[]
+  workspaceRequests WorkspaceRequest[]
+}
+
+model WorkspaceRequest {
+  id            String   @id @default(uuid())
+  userId        String
+  workspaceName String
+  projectName   String
+  kind          String   @default("TEAM")
+  status        String   @default("PENDING")
+  createdAt     DateTime @default(now())
+  reviewedAt    DateTime?
+  reviewedById  String?
+  workspaceId   String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status])
+  @@index([status, createdAt])
 }
 
 // A membership row = one user active in one workspace. Kept as its own

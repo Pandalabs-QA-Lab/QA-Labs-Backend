@@ -25,6 +25,9 @@ async function bulkCreate(req, res) {
 
 async function update(req, res) {
   const parsed = updateTestCaseSchema.parse(req.body);
+  if (req.membership.role === 'TESTER' && Object.keys(parsed).some((field) => !['status', 'actual'].includes(field))) {
+    return res.status(403).json({ error: 'Testers can update only test execution status and actual result' });
+  }
   const row = await service.updateTestCase(req.workspaceId, req.actor, req.params.projectId, req.params.id, parsed);
   res.json(row);
 }

@@ -24,4 +24,12 @@ async function updateMe(req, res) {
   res.json(result);
 }
 
-module.exports = { register, login, me, updateMe };
+async function listWorkspaces(req, res) {
+  res.json(await authService.listWorkspaces(req.user.id));
+}
+
+async function switchWorkspace(req, res) {
+  res.json(await authService.switchWorkspace(req.user.id, req.params.workspaceId));
+}
+
+module.exports = { register, login, me, updateMe, listWorkspaces, switchWorkspace };

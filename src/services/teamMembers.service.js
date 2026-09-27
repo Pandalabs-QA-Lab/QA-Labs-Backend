@@ -7,10 +7,9 @@ async function listTeamMembers(workspaceId) {
   return prisma.teamMember.findMany({ where: { workspaceId, deleted: false }, orderBy: { name: 'asc' } });
 }
 
-// If an email is provided, this creates a pending invite (userId stays
-// null until that person registers with the same email - see
-// auth.service.js register()). Without an email it's a plain local
-// profile, matching the "Add member" flow on the workspace settings page.
+// If an email is provided, this creates a pending directory entry. Signup
+// never grants access from an email match; the person must use an invite link
+// and starts as a Viewer. Without an email this is a local profile.
 async function createTeamMember(workspaceId, actor, data) {
   return prisma.$transaction(async (tx) => {
     const member = await tx.teamMember.create({
@@ -34,6 +33,14 @@ async function updateTeamMember(workspaceId, actor, id, data) {
   return prisma.$transaction(async (tx) => {
     const before = await tx.teamMember.findFirst({ where: { id, workspaceId, deleted: false } });
     if (!before) throw new HttpError(404, 'Team member not found');
+    const workspace = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
+    if (before.userId === workspace.ownerId && data.role && data.role !== 'QA_LEAD') {
+      throw new HttpError(403, 'Workspace owner must remain a QA Lead');
+    }
+    if (before.userId && data.role && data.role !== 'QA_LEAD') {
+      const linkedUser = await tx.user.findUnique({ where: { id: before.userId }, select: { isPlatformAdmin: true } });
+      if (linkedUser?.isPlatformAdmin) throw new HttpError(403, 'Platform admins must remain QA Leads');
+    }
     const updated = await tx.teamMember.update({ where: { id }, data });
 
     // TeamMember.role and Membership.role are separate rows (a TeamMember
@@ -67,7 +74,16 @@ async function deleteTeamMember(workspaceId, actor, id) {
   return prisma.$transaction(async (tx) => {
     const member = await tx.teamMember.findFirst({ where: { id, workspaceId, deleted: false } });
     if (!member) throw new HttpError(404, 'Team member not found');
+    const workspace = await tx.workspace.findUniqueOrThrow({ where: { id: workspaceId } });
+    if (member.userId === workspace.ownerId) throw new HttpError(403, 'Workspace owner cannot be removed');
+    if (member.userId) {
+      const linkedUser = await tx.user.findUnique({ where: { id: member.userId }, select: { isPlatformAdmin: true } });
+      if (linkedUser?.isPlatformAdmin) throw new HttpError(403, 'Platform admin access cannot be removed here');
+    }
     await tx.teamMember.update({ where: { id }, data: { deleted: true, deletedAt: new Date() } });
+    if (member.userId) {
+      await tx.membership.deleteMany({ where: { userId: member.userId, workspaceId } });
+    }
     await logActivity(tx, {
       workspaceId, entityType: 'member', entityId: id, action: 'deleted',
       title: `Team member removed: ${member.name}`, actorId: actor.id, actorName: actor.name,
