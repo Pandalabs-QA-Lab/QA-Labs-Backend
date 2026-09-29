@@ -24,12 +24,14 @@ model Workspace {
   projects      Project[]
   activities    Activity[]
   notifications Notification[]
+  invitations Invitation[]
 }
 
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
   passwordHash String
+  mustChangePassword Boolean @default(false)
   displayName  String
   isPlatformAdmin Boolean @default(false)
   createdAt    DateTime @default(now())
@@ -65,6 +67,7 @@ model Membership {
   userId      String
   workspaceId String
   role        Role     @default(VIEWER)
+  scope       String   @default("WORKSPACE")
   createdAt   DateTime @default(now())
 
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -118,8 +121,29 @@ model Project {
   presence     Presence[]
   attachments  Attachment[]
   comments     Comment[]
+  invitations Invitation[]
 
   @@index([workspaceId])
+}
+
+model Invitation {
+  id          String    @id @default(uuid())
+  workspaceId String
+  projectId   String?
+  kind        String
+  email       String
+  token       String    @unique
+  status      String    @default("PENDING")
+  createdById String
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([email, status])
+  @@index([workspaceId, projectId, status])
 }
 
 // entityType/entityId point at whatever the comment is attached to

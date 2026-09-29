@@ -60,7 +60,7 @@ async function overview() {
     prisma.activity.findMany({ select: { id: true, workspaceId: true, actorName: true, title: true, createdAt: true }, orderBy: { createdAt: 'desc' }, take: 100 }),
     prisma.presence.findMany({
       where: { lastSeenAt: { gte: new Date(Date.now() - 5 * 60 * 1000) } },
-      select: { userId: true, userName: true, lastSeenAt: true, projectId: true },
+      select: { userId: true, userName: true, lastSeenAt: true, projectId: true, project: { select: { name: true } } },
     }),
   ]);
   const [workspaceCount, userCount] = await Promise.all([prisma.workspace.count(), prisma.user.count()]);
@@ -69,6 +69,38 @@ async function overview() {
     counts: { workspaces: workspaceCount, users: userCount, activeUsers: activeUsers.length },
     workspaces, users, activity, activeUsers,
   };
+}
+
+async function listAdminUsers(search = '', page = 1) {
+  const where = search ? { OR: [
+    { email: { contains: search, mode: 'insensitive' } },
+    { displayName: { contains: search, mode: 'insensitive' } },
+  ] } : {};
+  const pageSize = 25;
+  const [items, total] = await Promise.all([
+    prisma.user.findMany({
+      where, select: { id: true, email: true, displayName: true, createdAt: true, isPlatformAdmin: true,
+        mustChangePassword: true, memberships: { select: { workspaceId: true, role: true, scope: true,
+          workspace: { select: { name: true, ownerId: true } } } } },
+      orderBy: { createdAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize,
+    }),
+    prisma.user.count({ where }),
+  ]);
+  return { items, total, page, pageSize };
+}
+
+async function listAdminWorkspaces(search = '', page = 1) {
+  const where = search ? { name: { contains: search, mode: 'insensitive' } } : {};
+  const pageSize = 25;
+  const [items, total] = await Promise.all([
+    prisma.workspace.findMany({
+      where, select: { id: true, name: true, ownerId: true, createdAt: true,
+        _count: { select: { memberships: true, projects: true } } },
+      orderBy: { createdAt: 'desc' }, skip: (page - 1) * pageSize, take: pageSize,
+    }),
+    prisma.workspace.count({ where }),
+  ]);
+  return { items, total, page, pageSize };
 }
 
 async function changeMemberRole(workspaceId, userId, role, adminId) {
@@ -113,8 +145,8 @@ async function enterWorkspace(workspaceId, adminId) {
     });
     await tx.membership.upsert({
       where: { userId_workspaceId: { userId: adminId, workspaceId } },
-      update: { role: 'QA_LEAD' },
-      create: { userId: adminId, workspaceId, role: 'QA_LEAD' },
+      update: { role: 'QA_LEAD', scope: 'WORKSPACE' },
+      create: { userId: adminId, workspaceId, role: 'QA_LEAD', scope: 'WORKSPACE' },
     });
     const linked = await tx.teamMember.updateMany({
       where: { workspaceId, userId: adminId },
@@ -162,4 +194,4 @@ async function removeMember(workspaceId, userId, adminId) {
   });
 }
 
-module.exports = { requestWorkspace, myRequests, listRequests, reviewRequest, overview, changeMemberRole, enterWorkspace, removeMember };
+module.exports = { requestWorkspace, myRequests, listRequests, reviewRequest, overview, listAdminUsers, listAdminWorkspaces, changeMemberRole, enterWorkspace, removeMember };

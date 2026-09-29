@@ -2,11 +2,11 @@ const prisma = require('../lib/prisma');
 
 const HISTORY_LIMIT = 1000;
 
-async function listActivity(workspaceId, { projectId, entityType, entityId, limit } = {}) {
+async function listActivity(workspaceId, { projectId, entityType, entityId, limit, allowedProjectIds } = {}) {
   return prisma.activity.findMany({
     where: {
       workspaceId,
-      ...(projectId ? { projectId } : {}),
+      ...(projectId ? { projectId } : allowedProjectIds ? { projectId: { in: allowedProjectIds } } : {}),
       ...(entityType ? { entityType } : {}),
       ...(entityId ? { entityId } : {}),
     },

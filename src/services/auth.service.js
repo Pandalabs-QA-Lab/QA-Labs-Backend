@@ -5,7 +5,7 @@ const HttpError = require('../lib/httpError');
 
 function session(user, membership, includeToken = false) {
   const result = {
-    user: { id: user.id, email: user.email, displayName: user.displayName, isPlatformAdmin: user.isPlatformAdmin },
+    user: { id: user.id, email: user.email, displayName: user.displayName, isPlatformAdmin: user.isPlatformAdmin, mustChangePassword: user.mustChangePassword || false },
     workspace: membership ? { id: membership.workspace.id, name: membership.workspace.name } : null,
     role: membership?.role || null,
   };
@@ -75,4 +75,19 @@ async function updateMe({ userId, workspaceId }, { displayName }) {
   return { user: { id: user.id, email: user.email, displayName: user.displayName, isPlatformAdmin: user.isPlatformAdmin } };
 }
 
-module.exports = { register, login, me, listWorkspaces, switchWorkspace, updateMe };
+async function changePassword(userId, { currentPassword, newPassword }) {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) throw new HttpError(401, 'Invalid session');
+  if (!(await comparePassword(currentPassword, user.passwordHash))) {
+    throw new HttpError(403, 'Current password is incorrect');
+  }
+  if (currentPassword === newPassword) throw new HttpError(400, 'Choose a different password');
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash: await hashPassword(newPassword), mustChangePassword: false },
+  });
+  return { user: { id: updated.id, email: updated.email, displayName: updated.displayName,
+    isPlatformAdmin: updated.isPlatformAdmin, mustChangePassword: false } };
+}
+
+module.exports = { register, login, me, listWorkspaces, switchWorkspace, updateMe, changePassword };

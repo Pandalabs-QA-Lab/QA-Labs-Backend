@@ -3,7 +3,7 @@ const cors = require('cors');
 const env = require('./config/env');
 const errorHandler = require('./middleware/errorHandler');
 const { requireAuth } = require('./middleware/auth');
-const { attachWorkspace, requireWorkspaceMember } = require('./middleware/workspaceScope');
+const { attachWorkspace, requireWorkspaceMember, enforceProjectScope } = require('./middleware/workspaceScope');
 const accessRoutes = require('./routes/access.routes');
 const loadActor = require('./middleware/loadActor');
 const authRoutes = require('./routes/auth.routes');
@@ -55,7 +55,7 @@ app.use('/api/access', accessRoutes);
 // the JWT, attachWorkspace derives req.workspaceId from it (never from
 // the request itself), and loadActor resolves the display name used for
 // createdBy/actorName stamps.
-app.use('/api', requireAuth, attachWorkspace, requireWorkspaceMember, loadActor);
+app.use('/api', requireAuth, attachWorkspace, requireWorkspaceMember, enforceProjectScope, loadActor);
 
 app.use('/api/projects', projectsRoutes);
 app.use('/api/projects/:projectId/test-cases', testCasesRoutes);

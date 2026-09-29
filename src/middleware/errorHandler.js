@@ -4,11 +4,15 @@ function errorHandler(err, req, res, next) { // eslint-disable-line no-unused-va
   if (err instanceof ZodError) {
     return res.status(400).json({ error: err.issues[0]?.message || 'Invalid request', issues: err.issues });
   }
-  const status = err.status || 500;
+  const databaseUnavailable = ['P1001', 'P1002', 'P1008'].includes(err.code);
+  const status = databaseUnavailable ? 503 : (err.status || 500);
   if (status >= 500) {
     console.error(err);
   }
-  res.status(status).json({ error: err.message || 'Internal server error' });
+  const message = databaseUnavailable
+    ? 'Database is temporarily unavailable. Please try again shortly.'
+    : status >= 500 ? 'Internal server error' : (err.message || 'Request failed');
+  res.status(status).json({ error: message });
 }
 
 module.exports = errorHandler;

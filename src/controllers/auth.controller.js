@@ -1,5 +1,5 @@
 const authService = require('../services/auth.service');
-const { registerSchema, loginSchema, updateMeSchema } = require('../validators/auth.validators');
+const { registerSchema, loginSchema, updateMeSchema, changePasswordSchema } = require('../validators/auth.validators');
 
 async function register(req, res) {
   const parsed = registerSchema.parse(req.body);
@@ -24,6 +24,10 @@ async function updateMe(req, res) {
   res.json(result);
 }
 
+async function changePassword(req, res) {
+  res.json(await authService.changePassword(req.user.id, changePasswordSchema.parse(req.body)));
+}
+
 async function listWorkspaces(req, res) {
   res.json(await authService.listWorkspaces(req.user.id));
 }
@@ -32,4 +36,4 @@ async function switchWorkspace(req, res) {
   res.json(await authService.switchWorkspace(req.user.id, req.params.workspaceId));
 }
 
-module.exports = { register, login, me, updateMe, listWorkspaces, switchWorkspace };
+module.exports = { register, login, me, updateMe, changePassword, listWorkspaces, switchWorkspace };
