@@ -115,6 +115,7 @@ model Project {
   testRuns  TestRun[]
   runDraft  RunDraft?
   requirements Requirement[]
+  folders      ProjectFolder[]
   testPlans    TestPlan[]
   milestones   Milestone[]
   sharedSteps  SharedStep[]
@@ -263,6 +264,7 @@ model TestCase {
   title         String
   module        String         @default("")
   folder        String         @default("")
+  folderId      String?
   scenario      String         @default("")
   preconditions String         @default("")
   steps         String[]       @default([])
@@ -287,12 +289,14 @@ model TestCase {
   updatedByName String?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectFolder ProjectFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
   bugsLinked Bug[] @relation("BugLinkedTestCase")
   attachments Attachment[]
 
   @@unique([projectId, sourceTcId])
   @@index([projectId])
   @@index([projectId, module])
+  @@index([folderId])
 }
 
 enum BugSeverity {
@@ -427,9 +431,11 @@ model RunDraft {
 model Requirement {
   id            String    @id @default(uuid())
   projectId     String
+  folderId      String?
   key           String?
   title         String
   description   String    @default("")
+  acceptanceCriteria String[] @default([])
   priority      String    @default("Medium")
   testCaseIds   String[]  @default([])
   deleted       Boolean   @default(false)
@@ -440,8 +446,27 @@ model Requirement {
   createdByName String?
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectFolder ProjectFolder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
 
   @@index([projectId])
+  @@index([folderId])
+}
+
+model ProjectFolder {
+  id           String   @id @default(uuid())
+  projectId    String
+  parentId     String?
+  name         String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent       ProjectFolder? @relation("FolderChildren", fields: [parentId], references: [id], onDelete: Restrict)
+  children     ProjectFolder[] @relation("FolderChildren")
+  testCases    TestCase[]
+  requirements Requirement[]
+
+  @@index([projectId, parentId])
 }
 
 model TestPlan {

@@ -27,6 +27,10 @@ Check `http://localhost:4000/api/health` for `{"status":"ok"}`. Start the fronte
 
 Signup creates a user without a workspace. An invite grants initial Viewer access, or a platform admin approves a workspace request. Workspace roles are QA Lead, Tester, and Viewer. The API checks membership on every protected workspace request. See [access and deployment notes](ACCESS.md) for the detailed permissions and migration sequence.
 
+Project folders are shared by requirements and test cases within each project. `GET /api/projects/:projectId/folders` lists the tree; QA Leads can create, rename, move, or remove folders using `POST /folders`, `PATCH /folders/:id`, and `DELETE /folders/:id` under that project route. A folder can have a `parentId` for nesting. Requirements and test cases store a nullable `folderId`; deleting a folder moves its direct items and child folders to its parent. Deploy the folder migration before deploying the API code that uses these fields.
+
+Requirements have an `acceptanceCriteria` string array and can link test cases in the same project through `testCaseIds`. Stable requirement keys are unique within a project, ignoring case. The bulk endpoint `POST /api/projects/:projectId/requirements/bulk` accepts `{ "rows": [...] }`; validation and insertion run in one database transaction. Apply the acceptance-criteria migration before deploying API code that reads or writes this field.
+
 To grant platform admin rights, first create the intended account through signup, then run from a trusted shell with the correct database configured:
 
 ```powershell

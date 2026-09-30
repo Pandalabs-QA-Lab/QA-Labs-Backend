@@ -13,7 +13,7 @@ async function exportWorkspace(workspaceId, actor) {
 
   const projectData = {};
   for (const project of projects) {
-    const [testCases, bugs, runs, requirements, testPlans, milestones, sharedSteps] = await Promise.all([
+    const [testCases, bugs, runs, requirements, testPlans, milestones, sharedSteps, folders] = await Promise.all([
       prisma.testCase.findMany({ where: { projectId: project.id, deleted: false } }),
       prisma.bug.findMany({ where: { projectId: project.id, deleted: false } }),
       prisma.testRun.findMany({ where: { projectId: project.id, deleted: false } }),
@@ -21,8 +21,9 @@ async function exportWorkspace(workspaceId, actor) {
       prisma.testPlan.findMany({ where: { projectId: project.id, deleted: false } }),
       prisma.milestone.findMany({ where: { projectId: project.id, deleted: false } }),
       prisma.sharedStep.findMany({ where: { projectId: project.id } }),
+      prisma.projectFolder.findMany({ where: { projectId: project.id } }),
     ]);
-    projectData[project.id] = { testCases, bugs, runs, requirements, testPlans, milestones, sharedSteps };
+    projectData[project.id] = { testCases, bugs, runs, requirements, testPlans, milestones, sharedSteps, folders };
   }
 
   return {
@@ -82,6 +83,7 @@ async function importWorkspace(workspaceId, actor, backup, mode) {
 
       const data = projectData[oldProject.id] || {};
       const tcIdMap = new Map();
+      const folderIdMap = new Map();
       const planIdMap = new Map();
       const milestoneIdMap = new Map();
 
@@ -92,7 +94,33 @@ async function importWorkspace(workspaceId, actor, backup, mode) {
       for (const plan of data.testPlans || []) planIdMap.set(plan.id, crypto.randomUUID());
       for (const ms of data.milestones || []) milestoneIdMap.set(ms.id, crypto.randomUUID());
 
+      const sourceFolders = new Map((data.folders || []).map((folder) => [folder.id, folder]));
+      const legacyFolders = new Map();
+      const importFolder = async (id, stack = new Set()) => {
+        if (folderIdMap.has(id)) return folderIdMap.get(id);
+        if (stack.has(id)) throw new HttpError(400, 'Backup contains a folder cycle');
+        const folder = sourceFolders.get(id);
+        if (!folder) return null;
+        stack.add(id);
+        const parentId = folder.parentId ? await importFolder(folder.parentId, stack) : null;
+        stack.delete(id);
+        const newId = crypto.randomUUID();
+        await tx.projectFolder.create({ data: { id: newId, projectId: newProjectId, parentId, name: folder.name } });
+        folderIdMap.set(id, newId);
+        return newId;
+      };
+      for (const folder of data.folders || []) await importFolder(folder.id);
+
       for (const tc of data.testCases || []) {
+        let folderId = folderIdMap.get(tc.folderId) || null;
+        if (!folderId && tc.folder) {
+          if (!legacyFolders.has(tc.folder)) {
+            const root = await tx.projectFolder.findFirst({ where: { projectId: newProjectId, parentId: null, name: tc.folder } });
+            const created = root || await tx.projectFolder.create({ data: { projectId: newProjectId, name: tc.folder } });
+            legacyFolders.set(tc.folder, created.id);
+          }
+          folderId = legacyFolders.get(tc.folder);
+        }
         await tx.testCase.create({
           data: {
             id: tcIdMap.get(tc.id),
@@ -100,6 +128,8 @@ async function importWorkspace(workspaceId, actor, backup, mode) {
             sourceTcId: tc.sourceTcId,
             title: tc.title,
             module: tc.module || '',
+            folder: tc.folder || '',
+            folderId,
             scenario: tc.scenario || '',
             preconditions: tc.preconditions || '',
             steps: tc.steps || [],
@@ -196,6 +226,8 @@ async function importWorkspace(workspaceId, actor, backup, mode) {
             key: req.key || null,
             title: req.title,
             description: req.description || '',
+            acceptanceCriteria: req.acceptanceCriteria || [],
+            folderId: folderIdMap.get(req.folderId) || null,
             priority: req.priority || 'Medium',
             testCaseIds: remappedTcIds,
             createdBy: actor.id,
