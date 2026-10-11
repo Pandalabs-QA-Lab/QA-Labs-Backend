@@ -42,3 +42,5 @@ Do not put an admin password or `JWT_SECRET` in the repository. Back up a produc
 ## Checks and generated files
 
 `npm test` runs the backend test suite. Prisma migrations in `prisma/migrations/` are source files and must be kept. `node_modules/`, `.env`, and uploaded files are ignored; `uploads/.gitkeep` keeps the upload directory present in a fresh clone.
+
+With the frontend cloned alongside this repository, `node scripts/verifyCustomerWorkflow.js` checks the customer workflow against a localhost database: nested folders, requirement acceptance criteria, linked cases, plan execution by a Tester, bug reporting, retest, and coverage/report agreement after fresh HTTP reads. It creates disposable accounts and a workspace and removes them afterward. It refuses non-local database hosts.

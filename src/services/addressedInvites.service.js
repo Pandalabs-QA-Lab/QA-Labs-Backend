@@ -140,7 +140,8 @@ async function accept(invite, actor) {
     }
     await logActivity(tx, {
       workspaceId: workspace.id, projectId: project?.id, entityType: 'invitation', entityId: invite.id,
-      action: 'accepted', title: `${actor.name} joined ${project?.name || workspace.name}`,
+      action: 'status_changed', title: `${actor.name} joined ${project?.name || workspace.name}`,
+      metadata: { before: 'PENDING', after: 'ACCEPTED' },
       actorId: actor.id, actorName: actor.name,
     });
     return {

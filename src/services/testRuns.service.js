@@ -20,9 +20,14 @@ async function createTestRun(workspaceId, actor, projectId, data) {
   await getProjectOrThrow(workspaceId, projectId);
   const counts = computeRunCounts(data.cases || []);
   return prisma.$transaction(async (tx) => {
+    if (data.testPlanId) {
+      const plan = await tx.testPlan.findFirst({ where: { id: data.testPlanId, projectId, deleted: false } });
+      if (!plan) throw new HttpError(404, 'Test plan not found in this project');
+    }
     const run = await tx.testRun.create({
       data: {
         projectId,
+        testPlanId: data.testPlanId || null,
         name: data.name,
         build: data.build || '',
         environment: data.environment || '',
