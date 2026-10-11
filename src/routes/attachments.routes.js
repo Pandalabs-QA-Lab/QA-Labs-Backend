@@ -4,7 +4,7 @@ const upload = require('../middleware/upload');
 const controller = require('../controllers/attachments.controller');
 const { requireRole } = require('../middleware/workspaceScope');
 
-const router = express.Router();
+const router = express.Router({ mergeParams: true });
 
 router.post('/', requireRole('QA_LEAD', 'TESTER'), upload.single('file'), asyncHandler(controller.upload));
 router.get('/:id/download', asyncHandler(controller.download));

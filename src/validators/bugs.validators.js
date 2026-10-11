@@ -2,6 +2,7 @@ const { z } = require('zod');
 
 const evidenceLinkSchema = z.object({
   id: z.string().optional(),
+  attachmentId: z.string().uuid().optional(),
   url: z.string(),
   label: z.string().optional().default(''),
   addedAt: z.string().optional(),

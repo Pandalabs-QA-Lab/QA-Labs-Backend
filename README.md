@@ -39,7 +39,23 @@ npm run admin:grant -- admin@example.com
 
 Do not put an admin password or `JWT_SECRET` in the repository. Back up a production database before applying migrations.
 
+## Invitation emails
+
+Workspace and project invitations grant Viewer access initially and remain bound to the recipient email. Set `APP_PUBLIC_URL` to the frontend's full public URL, including `/QA-Labs-Frontend/` when running locally or on GitHub Pages. Configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM` in the backend environment. SMTP credentials must never be placed in the frontend or committed to Git.
+
+For Zoho, use the outgoing server shown in your mailbox's **Settings → Mail accounts → Server configuration**; the hostname depends on the account region and plan. Use a Zoho application password when MFA is enabled. Port 465 uses `SMTP_SECURE=true`; port 587 uses STARTTLS with `SMTP_SECURE=false`. The sender must match your mailbox or an authorized alias. See [Zoho SMTP settings](https://www.zoho.com/mail/help/zoho-smtp.html).
+
+The API records whether the provider accepted each invitation email. A failed delivery preserves the invitation so an admin can resend it or copy its link. Resending is limited to once per minute per invitation. Missing configuration leaves link sharing available. Invites expire after seven days; revoked or accepted invites cannot be resent. Apply the invitation email migration before deploying the API and restart after changing environment values.
+
 ## Checks and generated files
+
+### Attachment storage in production
+
+Uploads currently use the backend filesystem. Set `UPLOAD_DIR` to an absolute path on a persistent host volume outside the deployed checkout; ephemeral containers or deployment directories can lose files during redeploys. All API instances must share this same volume. Keep it private: downloads go through the authenticated API and workspace/project checks.
+
+Run `npm run storage:check` under the backend service account to verify that its configured directory can write, read, and remove a temporary probe. This does not prove persistence: the hosting team must confirm the volume survives restarts and redeploys. Back up this directory together with PostgreSQL; JSON project backups do not contain attachment bytes. When changing paths, existing attachment records still refer to their original paths, so preserve the old mount or migrate both files and record paths together.
+
+New files use random storage names; original names remain available for downloads. Failed database saves remove their unsaved file, and missing evidence returns a clear 404. Object storage such as S3/R2 is not configured yet.
 
 `npm test` runs the backend test suite. Prisma migrations in `prisma/migrations/` are source files and must be kept. `node_modules/`, `.env`, and uploaded files are ignored; `uploads/.gitkeep` keeps the upload directory present in a fresh clone.
 

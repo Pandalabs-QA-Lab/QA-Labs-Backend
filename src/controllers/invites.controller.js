@@ -1,6 +1,7 @@
 const service = require('../services/invites.service');
 const addressed = require('../services/addressedInvites.service');
 const { z } = require('zod');
+const invitationEmail = require('../services/invitationEmail.service');
 
 const invitationSchema = z.object({
   email: z.string().trim().email(),
@@ -22,6 +23,14 @@ async function revoke(req, res) {
   res.status(204).send();
 }
 
+async function resend(req, res) {
+  res.json(await addressed.resend(req.workspaceId, req.params.id));
+}
+
+function deliveryStatus(req, res) {
+  res.json({ configured: Boolean(invitationEmail.configuration()) });
+}
+
 async function pending(req, res) {
   res.json(await addressed.pending(req.actor.email));
 }
@@ -34,4 +43,4 @@ async function accept(req, res) {
   res.json(await service.acceptInvite(req.params.token, req.actor));
 }
 
-module.exports = { create, managed, revoke, pending, resolve, accept };
+module.exports = { create, managed, revoke, pending, resolve, accept, resend, deliveryStatus };

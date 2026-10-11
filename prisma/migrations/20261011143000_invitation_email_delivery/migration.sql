@@ -1,0 +1,4 @@
+ALTER TABLE "Invitation"
+ADD COLUMN "emailStatus" TEXT NOT NULL DEFAULT 'NOT_SENT',
+ADD COLUMN "emailSentAt" TIMESTAMP(3),
+ADD COLUMN "lastEmailAttemptAt" TIMESTAMP(3);

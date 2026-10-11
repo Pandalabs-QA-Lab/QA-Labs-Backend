@@ -9,11 +9,46 @@ const prismaPath = require.resolve('../src/lib/prisma');
 require.cache[prismaPath] = { id: prismaPath, filename: prismaPath, loaded: true, exports: prisma };
 
 const addressed = require('../src/services/addressedInvites.service');
+const invitationEmail = require('../src/services/invitationEmail.service');
 const { enforceProjectScope } = require('../src/middleware/workspaceScope');
 
 function response() {
   return { statusCode: 200, status(code) { this.statusCode = code; return this; }, json(value) { this.body = value; return this; } };
 }
+
+test('resending checks the workspace and uses an atomic cooldown before sending', async () => {
+  const oldConfig = invitationEmail.configuration;
+  const oldSend = invitationEmail.send;
+  let sends = 0;
+  let claim;
+  invitationEmail.configuration = () => ({});
+  invitationEmail.send = async () => { sends++; return { emailStatus: 'SENT', emailSentAt: new Date() }; };
+  prisma.invitation = {
+    findFirst: async ({ where }) => {
+      assert.equal(where.workspaceId, 'workspace-1');
+      assert.equal(where.status, 'PENDING');
+      return { id: 'invite-1', email: 'invitee@example.test', token: 'token', workspace: { name: 'Team' }, project: null };
+    },
+    updateMany: async (args) => { claim = args; return { count: 0 }; },
+    update: async () => { assert.fail('A rejected resend must not update delivery'); },
+  };
+  try {
+    await assert.rejects(addressed.resend('workspace-1', 'invite-1'), (error) => error.status === 429);
+    assert.equal(sends, 0);
+    assert.equal(claim.where.status, 'PENDING');
+    assert.ok(claim.where.expiresAt.gt instanceof Date);
+    let delivery;
+    prisma.invitation.updateMany = async () => ({ count: 1 });
+    prisma.invitation.update = async ({ data }) => { delivery = data; };
+    const result = await addressed.resend('workspace-1', 'invite-1');
+    assert.equal(sends, 1);
+    assert.equal(delivery.emailStatus, 'SENT');
+    assert.equal(result.workspaceName, 'Team');
+    assert.equal(result.emailConfigured, true);
+    prisma.invitation.findFirst = async () => null;
+    await assert.rejects(addressed.resend('workspace-1', 'revoked'), (error) => error.status === 404);
+  } finally { invitationEmail.configuration = oldConfig; invitationEmail.send = oldSend; }
+});
 
 test('project invitation is bound to its email and creates scoped Viewer access', async () => {
   const invite = { id: 'invite-1', status: 'PENDING', email: 'invitee@example.com', kind: 'PROJECT',

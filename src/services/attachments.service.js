@@ -22,11 +22,13 @@ async function uploadAttachment(workspaceId, actor, { projectId, testCaseId, bug
 
   const dir = path.join(env.uploadDir, workspaceId, projectId);
   await fs.mkdir(dir, { recursive: true });
-  const storedName = `${crypto.randomUUID()}-${file.originalname}`;
+  // Keep user-supplied names in metadata, never in the storage path.
+  const storedName = crypto.randomUUID();
   const filePath = path.join(dir, storedName);
   await fs.writeFile(filePath, file.buffer);
 
-  return prisma.attachment.create({
+  try {
+  return await prisma.attachment.create({
     data: {
       projectId,
       testCaseId: testCaseId || null,
@@ -38,20 +40,36 @@ async function uploadAttachment(workspaceId, actor, { projectId, testCaseId, bug
       uploadedBy: actor.id,
     },
   });
+  } catch (error) {
+    await fs.unlink(filePath).catch(cleanupError => {
+      console.error('Failed to clean up an unsaved attachment', cleanupError);
+    });
+    throw error;
+  }
 }
 
-async function getAttachmentForDownload(workspaceId, id) {
+async function assertAttachmentAvailable(attachment) {
+  try {
+    const stat = await fs.stat(attachment.path);
+    if (!stat.isFile()) throw new HttpError(404, 'Attachment file is unavailable');
+  } catch (error) {
+    if (error.code === 'ENOENT') throw new HttpError(404, 'Attachment file is unavailable. Please upload the evidence again.');
+    throw error;
+  }
+}
+
+async function getAttachmentForDownload(workspaceId, id, projectId) {
   const attachment = await prisma.attachment.findFirst({
-    where: { id, project: { workspaceId } },
+    where: { id, ...(projectId ? { projectId } : {}), project: { workspaceId, deleted: false } },
   });
   if (!attachment) throw new HttpError(404, 'Attachment not found');
   return attachment;
 }
 
-async function deleteAttachment(workspaceId, id) {
-  const attachment = await getAttachmentForDownload(workspaceId, id);
+async function deleteAttachment(workspaceId, id, projectId) {
+  const attachment = await getAttachmentForDownload(workspaceId, id, projectId);
   await prisma.attachment.delete({ where: { id } });
   await fs.unlink(attachment.path).catch(() => {}); // best-effort
 }
 
-module.exports = { uploadAttachment, getAttachmentForDownload, deleteAttachment };
+module.exports = { uploadAttachment, getAttachmentForDownload, assertAttachmentAvailable, deleteAttachment };
