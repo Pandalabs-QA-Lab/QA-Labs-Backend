@@ -1,7 +1,15 @@
 const crypto = require('crypto');
 const prisma = require('../lib/prisma');
 const HttpError = require('../lib/httpError');
-const { normalizeTestStatus, normalizePriority, normalizeBugSeverity, normalizeBugPriority, normalizeBugStatus, normalizeRetestStatus } = require('../lib/statusNormalize');
+const {
+  normalizeBackupRole,
+  normalizeBackupTestCaseStatus,
+  normalizeBackupTestCasePriority,
+  normalizeBackupBugSeverity,
+  normalizeBackupBugPriority,
+  normalizeBackupBugStatus,
+  normalizeBackupRetestStatus,
+} = require('../lib/backupEnumNormalize');
 
 const BACKUP_APP = 'qa-lab';
 const BACKUP_VERSION = 1;
@@ -83,7 +91,12 @@ async function importWorkspace(workspaceId, actor, backup, mode) {
       const existing = await tx.teamMember.findFirst({ where: { workspaceId, name: member.name, deleted: false } });
       if (!existing) {
         await tx.teamMember.create({
-          data: { workspaceId, name: member.name, email: member.email || null, role: member.role || 'VIEWER' },
+          data: {
+            workspaceId,
+            name: member.name,
+            email: member.email || null,
+            role: normalizeBackupRole(member.role),
+          },
         });
       }
     }
@@ -173,8 +186,8 @@ async function importWorkspace(workspaceId, actor, backup, mode) {
             testData: tc.testData || '',
             expected: tc.expected || '',
             actual: tc.actual || '',
-            status: normalizeTestStatus(tc.status),
-            priority: normalizePriority(tc.priority),
+            status: normalizeBackupTestCaseStatus(tc.status),
+            priority: normalizeBackupTestCasePriority(tc.priority),
             assignee: tc.assignee || '',
             devRemarks: tc.devRemarks || '',
             qaRemarks: tc.qaRemarks || '',
@@ -198,21 +211,21 @@ async function importWorkspace(workspaceId, actor, backup, mode) {
             title: bug.title,
             description: bug.description || '',
             module: bug.module || '',
-            severity: normalizeBugSeverity(bug.severity || 'MINOR'),
-            priority: normalizeBugPriority(bug.priority),
-            status: normalizeBugStatus(bug.status),
+            severity: normalizeBackupBugSeverity(bug.severity),
+            priority: normalizeBackupBugPriority(bug.priority),
+            status: normalizeBackupBugStatus(bug.status),
             stepsToReproduce: bug.stepsToReproduce || '',
             expected: bug.expected || '',
             actual: bug.actual || '',
             environment: bug.environment || '',
             build: bug.build || '',
             fixedInBuild: bug.fixedInBuild || '',
-            retestStatus: normalizeRetestStatus(bug.retestStatus),
             reportedByName: bug.reportedByName || null,
             reportedDate: bug.reportedDate || null,
             devRemarks: bug.devRemarks || '',
             qaRemarks: bug.qaRemarks || '',
             assignedTo: bug.assignedTo || '',
+            retestStatus: normalizeBackupRetestStatus(bug.retestStatus),
             linkedTestCaseId: bug.linkedTestCaseId ? tcIdMap.get(bug.linkedTestCaseId) || null : null,
             linkedRequirementId: requirementIdMap.get(bug.linkedRequirementId) || null,
             linkedBugIds: (bug.linkedBugIds || []).map((id) => bugIdMap.get(id)).filter(Boolean),
