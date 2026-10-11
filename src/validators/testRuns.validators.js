@@ -32,6 +32,7 @@ const createTestRunSchema = z.object({
   cases: rawFields.cases.optional().default([]),
   linkedBugIds: rawFields.linkedBugIds.optional().default([]),
   completedAt: rawFields.completedAt.optional(),
+  testPlanId: z.string().uuid().nullable().optional(),
 });
 
 const updateTestRunSchema = z.object(

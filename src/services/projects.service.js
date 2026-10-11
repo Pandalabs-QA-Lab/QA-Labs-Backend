@@ -18,9 +18,9 @@ async function getProjectOrThrow(workspaceId, projectId, tx = prisma) {
   return project;
 }
 
-async function listProjects(workspaceId) {
+async function listProjects(workspaceId, allowedProjectIds) {
   return prisma.project.findMany({
-    where: { workspaceId, deleted: false },
+    where: { workspaceId, deleted: false, ...(allowedProjectIds ? { id: { in: allowedProjectIds } } : {}) },
     orderBy: { createdAt: 'desc' },
   });
 }

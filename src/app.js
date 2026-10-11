@@ -3,7 +3,7 @@ const cors = require('cors');
 const env = require('./config/env');
 const errorHandler = require('./middleware/errorHandler');
 const { requireAuth } = require('./middleware/auth');
-const { attachWorkspace, requireWorkspaceMember } = require('./middleware/workspaceScope');
+const { attachWorkspace, requireWorkspaceMember, enforceProjectScope } = require('./middleware/workspaceScope');
 const accessRoutes = require('./routes/access.routes');
 const loadActor = require('./middleware/loadActor');
 const authRoutes = require('./routes/auth.routes');
@@ -15,6 +15,7 @@ const bugsRoutes = require('./routes/bugs.routes');
 const testRunsRoutes = require('./routes/testRuns.routes');
 const runDraftRoutes = require('./routes/runDraft.routes');
 const requirementsRoutes = require('./routes/requirements.routes');
+const foldersRoutes = require('./routes/folders.routes');
 const testPlansRoutes = require('./routes/testPlans.routes');
 const milestonesRoutes = require('./routes/milestones.routes');
 const sharedStepsRoutes = require('./routes/sharedSteps.routes');
@@ -55,7 +56,7 @@ app.use('/api/access', accessRoutes);
 // the JWT, attachWorkspace derives req.workspaceId from it (never from
 // the request itself), and loadActor resolves the display name used for
 // createdBy/actorName stamps.
-app.use('/api', requireAuth, attachWorkspace, requireWorkspaceMember, loadActor);
+app.use('/api', requireAuth, attachWorkspace, requireWorkspaceMember, enforceProjectScope, loadActor);
 
 app.use('/api/projects', projectsRoutes);
 app.use('/api/projects/:projectId/test-cases', testCasesRoutes);
@@ -63,6 +64,7 @@ app.use('/api/projects/:projectId/bugs', bugsRoutes);
 app.use('/api/projects/:projectId/test-runs', testRunsRoutes);
 app.use('/api/projects/:projectId/run-draft', runDraftRoutes);
 app.use('/api/projects/:projectId/requirements', requirementsRoutes);
+app.use('/api/projects/:projectId/folders', foldersRoutes);
 app.use('/api/projects/:projectId/test-plans', testPlansRoutes);
 app.use('/api/projects/:projectId/milestones', milestonesRoutes);
 app.use('/api/projects/:projectId/shared-steps', sharedStepsRoutes);

@@ -9,38 +9,42 @@ async function currentUserName(workspaceId, userId) {
   return member ? member.name : null;
 }
 
-async function listNotifications(workspaceId, userId) {
+function projectFilter(allowedProjectIds) {
+  return allowedProjectIds ? { projectId: { in: allowedProjectIds } } : {};
+}
+
+async function listNotifications(workspaceId, userId, allowedProjectIds) {
   const name = await currentUserName(workspaceId, userId);
   if (!name) return [];
   return prisma.notification.findMany({
-    where: { workspaceId, deleted: false, recipient: { equals: name, mode: 'insensitive' } },
+    where: { workspaceId, deleted: false, recipient: { equals: name, mode: 'insensitive' }, ...projectFilter(allowedProjectIds) },
     orderBy: { createdAt: 'desc' },
   });
 }
 
-async function markAsRead(workspaceId, userId, id) {
+async function markAsRead(workspaceId, userId, id, allowedProjectIds) {
   const name = await currentUserName(workspaceId, userId);
   const notification = await prisma.notification.findFirst({
-    where: { id, workspaceId, recipient: { equals: name || '', mode: 'insensitive' } },
+    where: { id, workspaceId, recipient: { equals: name || '', mode: 'insensitive' }, ...projectFilter(allowedProjectIds) },
   });
   if (!notification) throw new HttpError(404, 'Notification not found');
   return prisma.notification.update({ where: { id }, data: { read: true } });
 }
 
-async function markAllAsRead(workspaceId, userId) {
+async function markAllAsRead(workspaceId, userId, allowedProjectIds) {
   const name = await currentUserName(workspaceId, userId);
   if (!name) return;
   await prisma.notification.updateMany({
-    where: { workspaceId, deleted: false, recipient: { equals: name, mode: 'insensitive' }, read: false },
+    where: { workspaceId, deleted: false, recipient: { equals: name, mode: 'insensitive' }, read: false, ...projectFilter(allowedProjectIds) },
     data: { read: true },
   });
 }
 
-async function clearAll(workspaceId, userId) {
+async function clearAll(workspaceId, userId, allowedProjectIds) {
   const name = await currentUserName(workspaceId, userId);
   if (!name) return;
   await prisma.notification.updateMany({
-    where: { workspaceId, deleted: false, recipient: { equals: name, mode: 'insensitive' } },
+    where: { workspaceId, deleted: false, recipient: { equals: name, mode: 'insensitive' }, ...projectFilter(allowedProjectIds) },
     data: { deleted: true, deletedAt: new Date() },
   });
 }

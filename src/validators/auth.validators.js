@@ -15,4 +15,9 @@ const updateMeSchema = z.object({
   displayName: z.string().trim().min(1, 'Display name is required'),
 });
 
-module.exports = { registerSchema, loginSchema, updateMeSchema };
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(12, 'New password must be at least 12 characters'),
+});
+
+module.exports = { registerSchema, loginSchema, updateMeSchema, changePasswordSchema };

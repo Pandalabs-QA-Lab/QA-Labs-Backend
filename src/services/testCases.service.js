@@ -8,6 +8,7 @@ const { describeTestCaseChanges } = require('../lib/describeTestCaseChanges');
 const { historyEntry } = require('../lib/historyEntry');
 const { sendNotification } = require('../lib/notifier');
 const { withRetry } = require('../lib/withRetry');
+const { resolveFolderId, pathForFolder } = require('./folders.service');
 
 async function listTestCases(workspaceId, projectId) {
   await getProjectOrThrow(workspaceId, projectId);
@@ -42,13 +43,16 @@ async function createTestCase(workspaceId, actor, projectId, data) {
   await getProjectOrThrow(workspaceId, projectId);
   return withRetry(() => prisma.$transaction(async (tx) => {
     const sourceTcId = await assignCanonicalId(tx, projectId, data.module, data.sourceTcId);
+    const folderId = await resolveFolderId(tx, projectId, data.folderId, data.folder);
+    const folder = await pathForFolder(tx, projectId, folderId);
     const tc = await tx.testCase.create({
       data: {
         projectId,
         sourceTcId,
         title: data.title,
         module: data.module || '',
-        folder: data.folder || '',
+        folder,
+        folderId,
         scenario: data.scenario || '',
         preconditions: data.preconditions || '',
         steps: data.steps || [],
@@ -102,6 +106,8 @@ async function bulkCreateTestCases(workspaceId, actor, projectId, rows) {
     const usedIds = existing.map((r) => r.sourceTcId);
     const created = [];
     for (const row of rows) {
+      const folderId = await resolveFolderId(tx, projectId, row.folderId, row.folder);
+      const folder = await pathForFolder(tx, projectId, folderId);
       const sourceTcId = isValidTcId(row.sourceTcId) ? row.sourceTcId : nextTcId(row.module, usedIds);
       usedIds.push(sourceTcId);
       const tc = await tx.testCase.create({
@@ -110,7 +116,8 @@ async function bulkCreateTestCases(workspaceId, actor, projectId, rows) {
           sourceTcId,
           title: row.title,
           module: row.module || '',
-          folder: row.folder || '',
+          folder,
+          folderId,
           scenario: row.scenario || '',
           preconditions: row.preconditions || '',
           steps: row.steps || [],
@@ -151,6 +158,10 @@ async function updateTestCase(workspaceId, actor, projectId, id, data) {
     if (!before) throw new HttpError(404, 'Test case not found');
 
     const nextData = { ...data };
+    if (nextData.folderId !== undefined || nextData.folder !== undefined) {
+      nextData.folderId = await resolveFolderId(tx, projectId, nextData.folderId, nextData.folder);
+      nextData.folder = await pathForFolder(tx, projectId, nextData.folderId);
+    }
     if (nextData.status !== undefined) nextData.status = normalizeTestStatus(nextData.status);
     if (nextData.priority !== undefined) nextData.priority = normalizePriority(nextData.priority);
 

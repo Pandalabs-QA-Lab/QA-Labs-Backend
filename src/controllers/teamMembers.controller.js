@@ -2,7 +2,7 @@ const service = require('../services/teamMembers.service');
 const { createTeamMemberSchema, updateTeamMemberSchema, updateWorkspaceSchema } = require('../validators/teamMembers.validators');
 
 async function list(req, res) {
-  res.json(await service.listTeamMembers(req.workspaceId));
+  res.json(await service.listTeamMembers(req.workspaceId, req.allowedTeamMemberIds));
 }
 
 async function create(req, res) {
@@ -29,12 +29,4 @@ async function updateWorkspace(req, res) {
   res.json(await service.updateWorkspace(req.workspaceId, req.actor, parsed));
 }
 
-async function generateInviteLink(req, res) {
-  res.json(await service.generateInviteLink(req.workspaceId, req.actor));
-}
-
-async function revokeInviteLink(req, res) {
-  res.json(await service.revokeInviteLink(req.workspaceId, req.actor));
-}
-
-module.exports = { list, create, update, remove, getWorkspace, updateWorkspace, generateInviteLink, revokeInviteLink };
+module.exports = { list, create, update, remove, getWorkspace, updateWorkspace };

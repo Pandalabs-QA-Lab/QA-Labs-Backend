@@ -7,6 +7,7 @@ process.env.JWT_SECRET = 'test-secret-only-for-local-unit-tests';
 let membership = null;
 let createdUser = null;
 const prisma = {
+  invitation: { findUnique: async () => null },
   user: {
     findUnique: async () => null,
     create: async ({ data }) => {
@@ -119,6 +120,7 @@ test('Tester cannot change a test case definition through the HTTP route', async
 });
 
 test('platform overview rejects an ordinary signed-in user', async () => {
+  prisma.user.findUnique = async () => ({ id: 'user-1', isPlatformAdmin: false, mustChangePassword: false });
   const app = express();
   app.use('/access', accessRoutes);
   const server = app.listen(0);
@@ -126,6 +128,20 @@ test('platform overview rejects an ordinary signed-in user', async () => {
     const token = signToken({ userId: 'user-1' });
     const response = await fetch(`http://127.0.0.1:${server.address().port}/access/admin/overview`, {
       headers: { Authorization: `Bearer ${token}` },
+    });
+    assert.equal(response.status, 403);
+  } finally { server.close(); }
+});
+
+test('ordinary users cannot delete a workspace through the admin route', async () => {
+  prisma.user.findUnique = async () => ({ id: 'user-1', isPlatformAdmin: false, mustChangePassword: false });
+  const app = express();
+  app.use('/access', accessRoutes);
+  const server = app.listen(0);
+  try {
+    const token = signToken({ userId: 'user-1' });
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/access/admin/workspaces/11111111-1111-4111-8111-111111111111`, {
+      method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
     });
     assert.equal(response.status, 403);
   } finally { server.close(); }
@@ -154,24 +170,13 @@ test('approval creates the requested workspace, first project and QA Lead member
   assert.equal(created.find(([kind]) => kind === 'project')[1].name, 'Mobile app');
 });
 
-test('invitation grants Viewer even if a pending directory entry has a higher role', async () => {
+test('old unrestricted workspace links no longer grant access', async () => {
   const service = require('../src/services/invites.service');
   prisma.workspace = { findUnique: async () => ({ id: 'workspace-1', name: 'QA Team' }) };
-  prisma.teamMember = { findFirst: async () => null };
-  prisma.membership.findUnique = async () => null;
-  let joinedRole;
-  let directoryRole;
-  prisma.$transaction = async (operation) => operation({
-    membership: { create: async ({ data }) => { joinedRole = data.role; } },
-    teamMember: {
-      findFirst: async () => ({ id: 'pending-1', role: 'QA_LEAD' }),
-      update: async ({ data }) => { directoryRole = data.role; },
-    },
-  });
-  const result = await service.acceptInvite('valid-token', { id: 'user-1', name: 'New User', email: 'new@example.com' });
-  assert.equal(result.role, 'VIEWER');
-  assert.equal(joinedRole, 'VIEWER');
-  assert.equal(directoryRole, 'VIEWER');
+  await assert.rejects(
+    service.acceptInvite('old-generic-token', { id: 'user-1', name: 'New User', email: 'new@example.com' }),
+    (error) => error.status === 410,
+  );
 });
 
 test('platform admin role changes cannot demote the workspace owner', async () => {
@@ -206,6 +211,7 @@ test('platform admin can enter a workspace as QA Lead and appear in its team', a
   const result = await service.enterWorkspace('workspace-1', 'admin-1');
   assert.equal(result.role, 'QA_LEAD');
   assert.equal(writes.find(([kind]) => kind === 'membership')[1].role, 'QA_LEAD');
+  assert.equal(writes.find(([kind]) => kind === 'membership')[2].scope, 'WORKSPACE');
   assert.equal(writes.find(([kind]) => kind === 'teamMember')[1].userId, 'admin-1');
 });
 
@@ -228,4 +234,23 @@ test('removing a member revokes workspace access but keeps the user account', as
   assert.equal(result.removed, true);
   assert.equal(writes.find(([kind]) => kind === 'membership')[1].userId_workspaceId.userId, 'member-1');
   assert.equal(writes.find(([kind]) => kind === 'teamMember')[1].deleted, true);
+});
+
+test('admin directory searches and pages beyond the overview preview', async () => {
+  const service = require('../src/services/accessRequests.service');
+  let userQuery;
+  let workspaceQuery;
+  prisma.user.findMany = async (query) => { userQuery = query; return [{ id: 'user-27' }]; };
+  prisma.user.count = async () => 27;
+  prisma.workspace.findMany = async (query) => { workspaceQuery = query; return [{ id: 'workspace-27' }]; };
+  prisma.workspace.count = async () => 27;
+  const users = await service.listAdminUsers('alice', 2);
+  const workspaces = await service.listAdminWorkspaces('mobile', 2);
+  assert.equal(users.total, 27);
+  assert.equal(users.items[0].id, 'user-27');
+  assert.equal(userQuery.skip, 25);
+  assert.equal(userQuery.where.OR[0].email.contains, 'alice');
+  assert.equal(workspaces.total, 27);
+  assert.equal(workspaceQuery.skip, 25);
+  assert.equal(workspaceQuery.where.name.contains, 'mobile');
 });

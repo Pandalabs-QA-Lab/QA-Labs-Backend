@@ -2,7 +2,7 @@ const service = require('../services/projects.service');
 const { createProjectSchema, updateProjectSchema } = require('../validators/projects.validators');
 
 async function list(req, res) {
-  const projects = await service.listProjects(req.workspaceId);
+  const projects = await service.listProjects(req.workspaceId, req.allowedProjectIds);
   res.json(projects);
 }
 

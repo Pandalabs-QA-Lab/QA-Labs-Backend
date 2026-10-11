@@ -1,10 +1,12 @@
-const crypto = require('crypto');
 const prisma = require('../lib/prisma');
 const HttpError = require('../lib/httpError');
 const { logActivity } = require('../lib/activityLogger');
 
-async function listTeamMembers(workspaceId) {
-  return prisma.teamMember.findMany({ where: { workspaceId, deleted: false }, orderBy: { name: 'asc' } });
+async function listTeamMembers(workspaceId, allowedTeamMemberIds) {
+  return prisma.teamMember.findMany({
+    where: { workspaceId, deleted: false, ...(allowedTeamMemberIds ? { id: { in: allowedTeamMemberIds } } : {}) },
+    orderBy: { name: 'asc' },
+  });
 }
 
 // If an email is provided, this creates a pending directory entry. Signup
@@ -106,28 +108,6 @@ async function updateWorkspace(workspaceId, actor, data) {
   return updated;
 }
 
-// Rotates (or creates) the workspace's shareable invite-link token.
-// Any existing link is invalidated the moment a new one is generated.
-async function generateInviteLink(workspaceId, actor) {
-  const inviteToken = crypto.randomBytes(24).toString('hex');
-  const updated = await prisma.workspace.update({ where: { id: workspaceId }, data: { inviteToken } });
-  await logActivity(prisma, {
-    workspaceId, entityType: 'workspace', entityId: workspaceId, action: 'updated',
-    title: `${actor.name} generated a new workspace invite link`, actorId: actor.id, actorName: actor.name,
-  });
-  return updated;
-}
-
-// Disables the current invite link without generating a replacement.
-async function revokeInviteLink(workspaceId, actor) {
-  const updated = await prisma.workspace.update({ where: { id: workspaceId }, data: { inviteToken: null } });
-  await logActivity(prisma, {
-    workspaceId, entityType: 'workspace', entityId: workspaceId, action: 'updated',
-    title: `${actor.name} revoked the workspace invite link`, actorId: actor.id, actorName: actor.name,
-  });
-  return updated;
-}
-
 module.exports = {
   listTeamMembers,
   createTeamMember,
@@ -135,6 +115,4 @@ module.exports = {
   deleteTeamMember,
   getWorkspace,
   updateWorkspace,
-  generateInviteLink,
-  revokeInviteLink,
 };
