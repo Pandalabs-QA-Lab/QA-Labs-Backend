@@ -139,6 +139,9 @@ model Invitation {
   createdAt   DateTime  @default(now())
   expiresAt   DateTime
   acceptedAt  DateTime?
+  emailStatus String    @default("NOT_SENT")
+  emailSentAt DateTime?
+  lastEmailAttemptAt DateTime?
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   project   Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)

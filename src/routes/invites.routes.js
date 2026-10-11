@@ -11,9 +11,11 @@ const requireWorkspaceScope = (req, res, next) => req.membership.scope === 'PROJ
   : next();
 
 router.get('/pending', requireAuth, loadActor, asyncHandler(controller.pending));
+router.get('/delivery-status', requireAuth, attachWorkspace, requireWorkspaceMember, requireRole('QA_LEAD'), requireWorkspaceScope, controller.deliveryStatus);
 router.get('/managed', requireAuth, attachWorkspace, requireWorkspaceMember, requireRole('QA_LEAD'), requireWorkspaceScope, asyncHandler(controller.managed));
 router.post('/managed', requireAuth, attachWorkspace, requireWorkspaceMember, requireRole('QA_LEAD'), requireWorkspaceScope, loadActor, asyncHandler(controller.create));
 router.delete('/managed/:id', requireAuth, attachWorkspace, requireWorkspaceMember, requireRole('QA_LEAD'), requireWorkspaceScope, asyncHandler(controller.revoke));
+router.post('/managed/:id/resend', requireAuth, attachWorkspace, requireWorkspaceMember, requireRole('QA_LEAD'), requireWorkspaceScope, asyncHandler(controller.resend));
 
 // Public - lets JoinPage show the workspace name before the visitor signs in.
 router.get('/:token', asyncHandler(controller.resolve));

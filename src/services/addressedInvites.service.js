@@ -2,13 +2,14 @@ const crypto = require('node:crypto');
 const prisma = require('../lib/prisma');
 const HttpError = require('../lib/httpError');
 const { logActivity } = require('../lib/activityLogger');
+const invitationEmail = require('./invitationEmail.service');
 
 const normalizeEmail = (email) => email.trim().toLowerCase();
 const isPending = (invite) => invite?.status === 'PENDING' && invite.expiresAt > new Date();
 
 async function create(workspaceId, actor, { email, projectId = null }) {
   const address = normalizeEmail(email);
-  return prisma.$transaction(async (tx) => {
+  const invite = await prisma.$transaction(async (tx) => {
     const workspace = await tx.workspace.findUnique({ where: { id: workspaceId } });
     if (!workspace) throw new HttpError(404, 'Workspace not found');
     const project = projectId
@@ -33,6 +34,32 @@ async function create(workspaceId, actor, { email, projectId = null }) {
     });
     return { ...invite, workspaceName: workspace.name, projectName: project?.name || null };
   });
+  return deliver(invite);
+}
+
+async function deliver(invite) {
+  if (!invitationEmail.configuration()) return { ...invite, emailStatus: 'NOT_CONFIGURED', emailConfigured: false };
+  const now = new Date();
+  const claimed = await prisma.invitation.updateMany({
+    where: {
+      id: invite.id, status: 'PENDING', expiresAt: { gt: now },
+      OR: [{ lastEmailAttemptAt: null }, { lastEmailAttemptAt: { lte: new Date(now.getTime() - 60000) } }],
+    },
+    data: { lastEmailAttemptAt: now },
+  });
+  if (!claimed.count) throw new HttpError(429, 'Please wait a minute before resending this invitation');
+  const delivery = await invitationEmail.send(invite);
+  await prisma.invitation.update({ where: { id: invite.id }, data: delivery });
+  return { ...invite, ...delivery, lastEmailAttemptAt: now, emailConfigured: true };
+}
+
+async function resend(workspaceId, id) {
+  const invite = await prisma.invitation.findFirst({
+    where: { id, workspaceId, status: 'PENDING', expiresAt: { gt: new Date() } },
+    include: { workspace: { select: { name: true } }, project: { select: { name: true, deleted: true } } },
+  });
+  if (!invite || invite.project?.deleted) throw new HttpError(404, 'Pending invitation not found');
+  return deliver({ ...invite, workspaceName: invite.workspace.name, projectName: invite.project?.name || null });
 }
 
 async function listManaged(workspaceId, projectId = null) {
@@ -40,10 +67,11 @@ async function listManaged(workspaceId, projectId = null) {
     const project = await prisma.project.findFirst({ where: { id: projectId, workspaceId, deleted: false } });
     if (!project) throw new HttpError(404, 'Project not found');
   }
-  return prisma.invitation.findMany({
+  const rows = await prisma.invitation.findMany({
     where: { workspaceId, projectId, status: 'PENDING', expiresAt: { gt: new Date() } },
     orderBy: { createdAt: 'desc' },
   });
+  return rows.map((invite) => ({ ...invite, emailConfigured: Boolean(invitationEmail.configuration()) }));
 }
 
 async function revoke(workspaceId, id) {
@@ -151,4 +179,4 @@ async function accept(invite, actor) {
   });
 }
 
-module.exports = { create, listManaged, revoke, pending, resolve, accept, linkMember };
+module.exports = { create, listManaged, revoke, pending, resolve, accept, linkMember, resend };

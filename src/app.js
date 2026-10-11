@@ -75,6 +75,7 @@ app.use('/api/notifications', notificationsRoutes);
 app.use('/api/projects/:projectId/presence', presenceRoutes);
 app.use('/api/projects/:projectId/comments', commentsRoutes);
 app.use('/api/attachments', attachmentsRoutes);
+app.use('/api/projects/:projectId/attachments', attachmentsRoutes);
 app.use('/api/backup', backupRoutes);
 
 app.use((req, res) => {
